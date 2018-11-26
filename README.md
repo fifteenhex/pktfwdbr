@@ -1,5 +1,7 @@
 # pktfwdbr
 
+[![Build Status](https://travis-ci.com/fifteenhex/pktfwdbr.svg?branch=master)](https://travis-ci.com/fifteenhex/pktfwdbr)
+
 This is intended to be a minimal bridge between the semtech lora packet forwarder running on a gateway
 and some other system you have that is operating the extra lorawan backend stuff.
 The main idea is to get the messages from out of the udp packets and onto MQTT where you can deal with
