@@ -18,14 +18,15 @@
 #define ERR_RXBIND 5
 #define ERR_TXCONNECT 6
 
-#define TOPIC_ROOT	"pktfwdbr"
-#define TOPIC_RX	"rx"
-#define TOPIC_RX_JOIN "join"
+#define TOPIC_ROOT		"pktfwdbr"
+#define TOPIC_RX		"rx"
+#define TOPIC_RX_JOIN	"join"
 #define TOPIC_RX_UNCONF "unconfirmed"
-#define TOPIC_RX_CONF "confirmed"
-#define TOPIC_RX_OTHER "other"
-#define TOPIC_TX	"tx"
-#define TOPIC_STAT	"stat"
+#define TOPIC_RX_CONF	"confirmed"
+#define TOPIC_RX_OTHER	"other"
+#define TOPIC_TX		"tx"
+#define TOPIC_TXACK		"txack"
+#define TOPIC_STAT		"stat"
 
 #define JSON_RXPK				"rxpk"
 #define JSON_STAT				"stat"
@@ -193,6 +194,8 @@ static void touchforwarder(struct context* cntx, const gchar* id,
 
 }
 
+#define ERROR_JSON_TOOSHORT "json payload is too short"
+
 static gboolean handlerx(GIOChannel *source, GIOCondition condition,
 		gpointer data) {
 
@@ -241,7 +244,7 @@ static gboolean handlerx(GIOChannel *source, GIOCondition condition,
 		gssize jsonsz = PKT_JSONSZ(pktsz);
 
 		if (jsonsz < 2) {
-			g_message("json payload is too short");
+			g_message(ERROR_JSON_TOOSHORT);
 			goto out;
 		}
 
@@ -285,9 +288,18 @@ static gboolean handlerx(GIOChannel *source, GIOCondition condition,
 	}
 		break;
 	case PKT_TYPE_TX_ACK: {
-		uint8_t* json = PKT_JSON(pktbuff);
-
 		g_message("got tx ack");
+		uint8_t* json = PKT_JSON(pktbuff);
+		gssize jsonsz = PKT_JSONSZ(pktsz);
+		if (jsonsz < 2) {
+			g_message(ERROR_JSON_TOOSHORT);
+			goto out;
+		}
+		gchar* idstr = extractid(pktbuff);
+		gchar* topic = createtopic(idstr, TOPIC_TXACK, NULL);
+		mosquitto_publish(
+				mosquitto_client_getmosquittoinstance(cntx->mosqclient), NULL,
+				topic, jsonsz, json, 0, false);
 	}
 		break;
 	default:
