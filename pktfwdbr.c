@@ -293,8 +293,12 @@ static gboolean handlerx(GIOChannel *source, GIOCondition condition,
 		gssize jsonsz = PKT_JSONSZ(pktsz);
 		if (jsonsz < 2) {
 			g_message(ERROR_JSON_TOOSHORT);
-			goto out;
+			jsonsz = 0;
 		}
+
+		if (jsonsz == 0)
+			json = NULL;
+
 		gchar* idstr = extractid(pktbuff);
 		gchar* topic = createtopic(idstr, TOPIC_TXACK, NULL);
 		mosquitto_publish(
