@@ -1,11 +1,11 @@
 project('pktfwdbr', 'c')
 
-mosquittomainloop = subproject('mosquittomainloop')
+mosquitto_glib = subproject('mosquitto_glib')
 
 src = ['pktfwdbr.c']
 deps = [ dependency('glib-2.0'),
          dependency('json-glib-1.0'), 
-         mosquittomainloop.get_variable('mosquittomainloop_dep')]
+         mosquitto_glib.get_variable('mosquitto_glib_dep')]
 
 executable('pktfwdbr', src, 
            dependencies : deps, 

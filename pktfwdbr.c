@@ -6,7 +6,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
-#include <mosquittomainloop.h>
+#include <mosquitto_client.h>
 
 #include "pkt.h"
 
@@ -83,7 +83,6 @@ static gchar* extracteui(guchar* buffer) {
 	for (int i = 7; i >= 0; i--) {
 		unsigned b = buffer[i];
 		g_string_append_printf(tmp, "%02x", b);
-		buffer[i];
 	}
 	return g_string_free(tmp, FALSE);
 }
