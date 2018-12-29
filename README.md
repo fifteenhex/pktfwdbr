@@ -18,9 +18,17 @@ be useful for a LoRaWAN backend.
 
 ### TX packets
 
-For now there is only one topic for tx packets.
+Publishes with the json format documented in the semtech protocol documentation can be sent to
+the tx topic. An optional token can be passed in the topic. This token will come back in the txack
+so you can correlate which tx the txack is for.
 
-```pktfwdbr/<gwid>/tx```
+Topic to schedule a tx:
+
+```pktfwdbr/<gwid>/tx/<token>```
+
+Topic where the forward txack will be published:
+
+```pktfwdbr/<gwid>/txack/<token>```
 
 ## message format
 
