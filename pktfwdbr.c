@@ -49,7 +49,7 @@ struct context {
 
 struct publishcontext {
 	gchar* id;
-	struct mosquitto* mosq;
+	MosquittoClient* mosqclient;
 };
 
 struct forwarder {
@@ -131,23 +131,13 @@ static void handlerx_processrx(JsonArray *array, guint index,
 	gchar* topic = createtopic(cntx->id, TOPIC_RX, subtopic, subsubtopic,
 			subsubsubtopic, NULL);
 
+	mosquitto_client_publish_json(cntx->mosqclient, element_node, topic);
+
+	g_free(topic);
 	if (subsubtopic != NULL)
 		g_free(subsubtopic);
 	if (subsubsubtopic != NULL)
 		g_free(subsubsubtopic);
-
-	JsonGenerator* jsongenerator = json_generator_new();
-	json_generator_set_root(jsongenerator, element_node);
-	gsize publishpayloadsz;
-	gchar* publishpayload = json_generator_to_data(jsongenerator,
-			&publishpayloadsz);
-	g_object_unref(jsongenerator);
-
-	mosquitto_publish(cntx->mosq, NULL, topic, publishpayloadsz, publishpayload,
-			0, false);
-
-	g_free(topic);
-	g_free(publishpayload);
 }
 
 static gchar* extractid(uint8_t* pktbuff) {
@@ -270,8 +260,7 @@ static gboolean handlerx(GIOChannel *source, GIOCondition condition,
 		if (json_object_has_member(rootobj, JSON_RXPK)) {
 			JsonArray* rxpkts = json_object_get_array_member(rootobj,
 			JSON_RXPK);
-			struct publishcontext pcntx = { idstr,
-					mosquitto_client_getmosquittoinstance(cntx->mosqclient) };
+			struct publishcontext pcntx = { idstr, cntx->mosqclient };
 			json_array_foreach_element(rxpkts, handlerx_processrx, &pcntx);
 		} else
 			g_message("no rx packets");
