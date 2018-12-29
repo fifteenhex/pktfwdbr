@@ -58,6 +58,7 @@ struct forwarder {
 	GSocketAddress* downsteam;
 	guint64 lastseen;
 	guint16 token;
+	GHashTable* txtokens;
 };
 
 static gchar* createtopic(const gchar* id, ...) {
@@ -165,7 +166,7 @@ static struct forwarder* findforwarder(struct context* cntx, const gchar* id) {
 }
 
 static void subforgw(struct context* cntx, const gchar* id) {
-	gchar* topic = createtopic(id, TOPIC_TX, NULL);
+	gchar* topic = createtopic(id, TOPIC_TX, "#", NULL);
 	if (mosquitto_subscribe(
 			mosquitto_client_getmosquittoinstance(cntx->mosqclient), NULL,
 			topic, 0) != MOSQ_ERR_SUCCESS) {
@@ -181,6 +182,8 @@ static void touchforwarder(struct context* cntx, const gchar* id,
 		id = g_strdup(id);
 		forwarder = g_malloc(sizeof(*forwarder));
 		forwarder->id = id;
+		forwarder->txtokens = g_hash_table_new_full(g_direct_hash,
+				g_direct_equal, NULL, (GDestroyNotify) g_free);
 		g_hash_table_insert(cntx->forwarders, (gpointer) id, forwarder);
 		subforgw(cntx, id);
 	}
@@ -201,6 +204,7 @@ static gboolean handlerx(GIOChannel *source, GIOCondition condition,
 	struct context* cntx = (struct context*) data;
 
 	JsonParser* jsonparser = NULL;
+	gchar* idstr = NULL;
 
 	g_message("UDP incoming");
 
@@ -218,7 +222,7 @@ static gboolean handlerx(GIOChannel *source, GIOCondition condition,
 		goto out;
 	}
 
-	gchar* idstr = extractid(pktbuff);
+	idstr = extractid(pktbuff);
 
 	struct pkt_hdr* p = ((struct pkt_hdr*) pktbuff);
 	if (!PKT_VALIDHEADER(p)) {
@@ -251,14 +255,16 @@ static gboolean handlerx(GIOChannel *source, GIOCondition condition,
 
 		uint8_t* json = PKT_JSON(pktbuff);
 		jsonparser = json_parser_new_immutable();
-		if (!json_parser_load_from_data(jsonparser, json, jsonsz, NULL)) {
+		if (!json_parser_load_from_data(jsonparser, (gchar*) json, jsonsz,
+		NULL)) {
 			g_message("failed to parse json");
 			goto out;
 		}
 		JsonNode* root = json_parser_get_root(jsonparser);
-		if (!JSON_NODE_HOLDS_OBJECT(root))
+		if (!JSON_NODE_HOLDS_OBJECT(root)) {
 			g_message("json root should have been an object");
-
+			goto out;
+		}
 		JsonObject* rootobj = json_node_get_object(root);
 
 		if (json_object_has_member(rootobj, JSON_RXPK)) {
@@ -298,11 +304,15 @@ static gboolean handlerx(GIOChannel *source, GIOCondition condition,
 		if (jsonsz == 0)
 			json = NULL;
 
-		gchar* idstr = extractid(pktbuff);
-		gchar* topic = createtopic(idstr, TOPIC_TXACK, NULL);
+		struct forwarder* forwarder = findforwarder(cntx, idstr);
+
+		gchar* txtoken = g_hash_table_lookup(forwarder->txtokens,
+				GINT_TO_POINTER(p->token));
+		gchar* topic = createtopic(idstr, TOPIC_TXACK, txtoken, NULL);
 		mosquitto_publish(
 				mosquitto_client_getmosquittoinstance(cntx->mosqclient), NULL,
 				topic, jsonsz, json, 0, false);
+		g_hash_table_remove(forwarder->txtokens, GINT_TO_POINTER(p->token));
 	}
 		break;
 	default:
@@ -323,13 +333,15 @@ static gboolean messagecallback(MosquittoClient* client,
 		const struct mosquitto_message* message, gpointer userdata) {
 	struct context* cntx = userdata;
 
-	char** splittopic;
+	char** splittopic = NULL;
 	int topicparts;
+	uint8_t* pkt = NULL;
+
 	mosquitto_sub_topic_tokenise(message->topic, &splittopic, &topicparts);
 
 	if (topicparts < 3) {
 		g_message("not enough topic parts");
-		return TRUE;
+		goto out;
 	}
 
 	char* root = splittopic[0];
@@ -338,12 +350,12 @@ static gboolean messagecallback(MosquittoClient* client,
 
 	if (strcmp(root, TOPIC_ROOT) != 0) {
 		g_message("bad topic root");
-		return TRUE;
+		goto out;
 	}
 
 	if (strcmp(direction, TOPIC_TX) != 0) {
 		g_message("unexpected direction");
-		return TRUE;
+		goto out;
 	}
 
 	g_message("have tx packet");
@@ -353,12 +365,20 @@ static gboolean messagecallback(MosquittoClient* client,
 		return TRUE;
 	if (forwarder->downsteam == NULL) {
 		g_message("don't know downstream address yet");
+		goto out;
 	}
 
 	uint16_t token = forwarder->token++;
 
+	if (topicparts >= 4) {
+		char* txtoken = strdup(splittopic[3]);
+		g_message("tracking tx with token %s", txtoken);
+		g_hash_table_insert(forwarder->txtokens, GINT_TO_POINTER(token),
+				txtoken);
+	}
+
 	gsize pktsz = sizeof(struct pkt_hdr) + message->payloadlen;
-	uint8_t* pkt = g_malloc(pktsz);
+	pkt = g_malloc(pktsz);
 
 	struct pkt_hdr hdr = { .version = PKT_VERSION, .token = token, .type =
 	PKT_TYPE_PULL_RESP };
@@ -369,6 +389,11 @@ static gboolean messagecallback(MosquittoClient* client,
 	if (g_socket_send_to(cntx->sock, forwarder->downsteam, (const gchar*) pkt,
 			pktsz, NULL, NULL) < 0)
 		g_message("failed to send pull resp");
+
+	out: if (splittopic != NULL)
+		mosquitto_sub_topic_tokens_free(&splittopic, topicparts);
+	if (pkt != NULL)
+		g_free(pkt);
 
 	return TRUE;
 }
