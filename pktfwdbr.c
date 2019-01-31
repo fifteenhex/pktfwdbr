@@ -43,6 +43,8 @@
 #define MTYPE_UNCONFUP 0b010
 #define MTYPE_CONFUP 0b100
 
+#define FORWARDER_TIMEOUT	(60 * 1000000)
+
 struct context {
 	GSocket* sock;
 	GHashTable* forwarders;
@@ -415,6 +417,21 @@ static void connectedcallback(MosquittoClient* client, void* something,
 	g_hash_table_foreach(cntx->forwarders, connectedcallback_resub, cntx);
 }
 
+static gboolean forwardergc_hasexpired(gpointer key, gpointer value,
+		gpointer userdata) {
+	struct forwarder* forwarder = value;
+	guint64* limit = userdata;
+	return forwarder->lastseen < *limit;
+}
+
+static gboolean forwardergc(gpointer userdata) {
+	struct context* cntx = (struct context*) userdata;
+	gint64 limit = g_get_monotonic_time() - FORWARDER_TIMEOUT;
+	g_hash_table_foreach_remove(cntx->forwarders, forwardergc_hasexpired,
+			&limit);
+	return TRUE;
+}
+
 int main(int argc, char** argv) {
 
 	int ret = 0;
@@ -451,6 +468,8 @@ int main(int argc, char** argv) {
 
 	g_signal_connect(cntx.mosqclient, MOSQUITTO_CLIENT_SIGNAL_MESSAGE,
 			(GCallback )messagecallback, &cntx);
+
+	g_timeout_add(FORWARDER_TIMEOUT, forwardergc, &cntx);
 
 	GInetAddress* loinetaddr = g_inet_address_new_loopback(
 			G_SOCKET_FAMILY_IPV4);
