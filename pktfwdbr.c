@@ -183,7 +183,6 @@ static void touchforwarder(struct context* cntx, const gchar* id,
 	else
 		forwarder->upstream = addr;
 	forwarder->lastseen = g_get_monotonic_time();
-
 }
 
 #define ERROR_JSON_TOOSHORT "json payload is too short"
@@ -387,6 +386,20 @@ static gboolean messagecallback(MosquittoClient* client,
 	return TRUE;
 }
 
+static void connectedcallback_resub(gpointer key, gpointer value,
+		gpointer userdata) {
+	struct forwarder* forwarder = value;
+	struct context* cntx = (struct context*) userdata;
+	subforgw(cntx, forwarder->id);
+}
+
+static void connectedcallback(MosquittoClient* client, void* something,
+		gpointer userdata) {
+	struct context* cntx = (struct context*) userdata;
+
+	g_hash_table_foreach(cntx->forwarders, connectedcallback_resub, cntx);
+}
+
 int main(int argc, char** argv) {
 
 	int ret = 0;
@@ -417,6 +430,9 @@ int main(int argc, char** argv) {
 
 	cntx.mosqclient = mosquitto_client_new_plaintext(mqttid, mqtthost,
 			mqttport);
+
+	g_signal_connect(cntx.mosqclient, MOSQUITTO_CLIENT_SIGNAL_CONNECTED,
+			(GCallback )connectedcallback, &cntx);
 
 	g_signal_connect(cntx.mosqclient, MOSQUITTO_CLIENT_SIGNAL_MESSAGE,
 			(GCallback )messagecallback, &cntx);
