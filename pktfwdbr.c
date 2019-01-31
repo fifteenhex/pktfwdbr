@@ -10,6 +10,8 @@
 
 #include "pkt.h"
 
+#include "config.h"
+
 #define ERR_MQTTCONNECT 0
 #define ERR_MQTTSUB 1
 #define ERR_SOCK 2
@@ -165,17 +167,24 @@ static void subforgw(struct context* cntx, const gchar* id) {
 	g_free(topic);
 }
 
-static void touchforwarder(struct context* cntx, const gchar* id,
+static gboolean touchforwarder(struct context* cntx, const gchar* id,
 		GSocketAddress* addr, gboolean downstream) {
+	gboolean ret = false;
+
 	struct forwarder* forwarder = g_hash_table_lookup(cntx->forwarders, id);
 	if (forwarder == NULL) {
-		id = g_strdup(id);
-		forwarder = g_malloc(sizeof(*forwarder));
-		forwarder->id = id;
-		forwarder->txtokens = g_hash_table_new_full(g_direct_hash,
-				g_direct_equal, NULL, (GDestroyNotify) g_free);
-		g_hash_table_insert(cntx->forwarders, (gpointer) id, forwarder);
-		subforgw(cntx, id);
+		if (g_hash_table_size(cntx->forwarders) < MAX_FORWARDERS) {
+			id = g_strdup(id);
+			forwarder = g_malloc(sizeof(*forwarder));
+			forwarder->id = id;
+			forwarder->txtokens = g_hash_table_new_full(g_direct_hash,
+					g_direct_equal, NULL, (GDestroyNotify) g_free);
+			g_hash_table_insert(cntx->forwarders, (gpointer) id, forwarder);
+			subforgw(cntx, id);
+		} else {
+			g_message("can't track any more forwarders");
+			goto out;
+		}
 	}
 
 	if (downstream)
@@ -183,6 +192,10 @@ static void touchforwarder(struct context* cntx, const gchar* id,
 	else
 		forwarder->upstream = addr;
 	forwarder->lastseen = g_get_monotonic_time();
+
+	ret = true;
+
+	out: return ret;
 }
 
 #define ERROR_JSON_TOOSHORT "json payload is too short"
@@ -221,7 +234,8 @@ static gboolean handlerx(GIOChannel *source, GIOCondition condition,
 
 	gboolean downstream = (p->type == PKT_TYPE_PULL_DATA
 			|| p->type == PKT_TYPE_TX_ACK);
-	touchforwarder(cntx, idstr, theiraddr, downstream);
+	if (!touchforwarder(cntx, idstr, theiraddr, downstream))
+		goto out;
 
 	switch (p->type) {
 	case PKT_TYPE_PUSH_DATA: {
@@ -314,6 +328,7 @@ static gboolean handlerx(GIOChannel *source, GIOCondition condition,
 		g_free(idstr);
 	if (jsonparser != NULL)
 		g_object_unref(jsonparser);
+
 	return TRUE;
 }
 

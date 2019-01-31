@@ -1,0 +1,1 @@
+option('max_forwarders', type : 'integer', value : 3)
