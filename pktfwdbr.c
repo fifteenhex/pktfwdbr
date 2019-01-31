@@ -183,6 +183,7 @@ static gboolean touchforwarder(struct context* cntx, const gchar* id,
 	struct forwarder* forwarder = g_hash_table_lookup(cntx->forwarders, id);
 	if (forwarder == NULL) {
 		if (g_hash_table_size(cntx->forwarders) < MAX_FORWARDERS) {
+			g_message("tracking new forwarder %s", id);
 			id = g_strdup(id);
 			forwarder = g_malloc(sizeof(*forwarder));
 			forwarder->id = id;
@@ -428,7 +429,11 @@ static gboolean forwardergc_hasexpired(gpointer key, gpointer value,
 		gpointer userdata) {
 	struct forwarder* forwarder = value;
 	guint64* limit = userdata;
-	return forwarder->lastseen < *limit;
+	if (forwarder->lastseen < *limit) {
+		g_message("forwarder %s has expired", forwarder->id);
+		return TRUE;
+	} else
+		return FALSE;
 }
 
 static gboolean forwardergc(gpointer userdata) {
