@@ -169,6 +169,13 @@ static void subforgw(struct context* cntx, const gchar* id) {
 	g_free(topic);
 }
 
+static void destroy_forwarder(gpointer data) {
+	struct forwarder* forwarder = data;
+	g_free((gchar*) forwarder->id);
+	g_hash_table_unref(forwarder->txtokens);
+	g_free(forwarder);
+}
+
 static gboolean touchforwarder(struct context* cntx, const gchar* id,
 		GSocketAddress* addr, gboolean downstream) {
 	gboolean ret = false;
@@ -437,7 +444,8 @@ int main(int argc, char** argv) {
 	int ret = 0;
 
 	struct context cntx = { 0 };
-	cntx.forwarders = g_hash_table_new(g_str_hash, g_str_equal);
+	cntx.forwarders = g_hash_table_new_full(g_str_hash, g_str_equal, NULL,
+			destroy_forwarder);
 
 	gchar* mqttid = NULL;
 	gchar* mqtthost = "localhost";
