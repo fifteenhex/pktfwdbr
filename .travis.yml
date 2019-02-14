@@ -15,3 +15,6 @@ before_install:
 script:
   - docker build -t withgit .
   - docker run withgit /bin/sh -c "cd /root && TRAVIS=true CC=$CC CXX=$CXX meson builddir && ninja -C builddir"
+
+after_success:
+  - ci/travisscripts/tagdev.sh ci/deploy_key.enc $encrypted_9ae4ab1b9887_key $encrypted_9ae4ab1b9887_iv

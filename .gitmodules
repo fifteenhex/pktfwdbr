@@ -1,3 +1,6 @@
 [submodule "mosquittomainloop"]
 	path = subprojects/mosquitto_glib
 	url = https://github.com/fifteenhex/mosquittomainloop.git
+[submodule "ci/travisscripts"]
+	path = ci/travisscripts
+	url = https://github.com/fifteenhex/travisscripts
